@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>随机决策小工具</title>
+
+  <style>
+    body {
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: #f6f1ea;
+      color: #333;
+      text-align: center;
+      padding: 30px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 22px;
+      padding: 28px;
+      margin: 24px auto;
+      max-width: 620px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 12px 24px;
+      margin: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      background: #50625e;
+      color: white;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    .choice-btn {
+      background: #b79693;
+    }
+
+    .choice-btn.active {
+      background: #50625e;
+      transform: scale(1.05);
+    }
+
+    textarea {
+      width: 90%;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 12px;
+      font-size: 16px;
+      margin: 10px 0;
+      resize: vertical;
+    }
+
+    .result {
+      font-size: 26px;
+      font-weight: bold;
+      margin-top: 18px;
+      color: #b79693;
+      min-height: 34px;
+    }
+
+    /* 骰子 */
+    .dice {
+      width: 90px;
+      height: 90px;
+      margin: 20px auto;
+      background: #fff;
+      border: 3px solid #50625e;
+      border-radius: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      padding: 10px;
+      box-sizing: border-box;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.15);
+    }
+
+    .dot {
+      width: 14px;
+      height: 14px;
+      background: #50625e;
+      border-radius: 50%;
+      align-self: center;
+      justify-self: center;
+      opacity: 0;
+    }
+
+    .show {
+      opacity: 1;
+    }
+
+    .rolling {
+      animation: roll 0.12s linear infinite;
+    }
+
+    @keyframes roll {
+      0% { transform: rotate(0deg) scale(1); }
+      50% { transform: rotate(18deg) scale(1.06); }
+      100% { transform: rotate(-18deg) scale(1); }
+    }
+
+    /* 转盘 */
+    .wheel-wrap {
+      position: relative;
+      width: 340px;
+      height: 340px;
+      margin: 24px auto;
+    }
+
+    .pointer {
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 18px solid transparent;
+      border-right: 18px solid transparent;
+      border-top: 34px solid #50625e;
+      z-index: 5;
+    }
+
+    canvas {
+      width: 340px;
+      height: 340px;
+      border-radius: 50%;
+      border: 6px solid #50625e;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+      transition: transform 4s cubic-bezier(.12,.73,.18,1);
+      background: white;
+    }
+
+    .option-list {
+      font-size: 14px;
+      color: #666;
+      margin-top: 8px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>随机决策小工具</h1>
+
+  <div class="card">
+    <h2>抛骰子决策</h2>
+
+    <p>先选择你的规则：</p>
+    <button id="smallBtn" class="choice-btn active" onclick="setDiceRule('small')">
+      小 = 做
+    </button>
+    <button id="bigBtn" class="choice-btn" onclick="setDiceRule('big')">
+      大 = 做
+    </button>
+
+    <div id="dice" class="dice">
+      <div class="dot" id="d1"></div>
+      <div class="dot" id="d2"></div>
+      <div class="dot" id="d3"></div>
+      <div class="dot" id="d4"></div>
+      <div class="dot" id="d5"></div>
+      <div class="dot" id="d6"></div>
+      <div class="dot" id="d7"></div>
+      <div class="dot" id="d8"></div>
+      <div class="dot" id="d9"></div>
+    </div>
+
+    <button onclick="rollDice()">抛骰子</button>
+
+    <div id="diceResult" class="result">等待结果</div>
+  </div>
+
+  <div class="card">
+    <h2>随机转盘</h2>
+    <p>每行输入一个选项，转盘会自动生成对应数量的选区</p>
+
+    <textarea id="options" rows="6" placeholder="火锅&#10;寿司&#10;麻辣烫&#10;麦当劳" oninput="prepareWheel()"></textarea>
+
+    <div class="wheel-wrap">
+      <div class="pointer"></div>
+      <canvas id="wheelCanvas" width="680" height="680"></canvas>
+    </div>
+
+    <button onclick="spinWheel()">开始转盘</button>
+
+    <div id="optionList" class="option-list"></div>
+    <div id="wheelResult" class="result">等待选择</div>
+  </div>
+
+  <script>
+    let diceRule = "small";
+    let currentRotation = 0;
+    let currentOptions = [];
+
+    const colors = [
+      "#d7b7c8",
+      "#b79693",
+      "#e2d2c2",
+      "#a9b7aa",
+      "#c7c2b0",
+      "#d8bba3",
+      "#b8c7d9",
+      "#c9b6d7",
+      "#d6c6a8",
+      "#aebfb5"
+    ];
+
+    function setDiceRule(rule) {
+      diceRule = rule;
+
+      document.getElementById("smallBtn").classList.remove("active");
+      document.getElementById("bigBtn").classList.remove("active");
+
+      if (rule === "small") {
+        document.getElementById("smallBtn").classList.add("active");
+      } else {
+        document.getElementById("bigBtn").classList.add("active");
+      }
+    }
+
+    function clearDice() {
+      for (let i = 1; i <= 9; i++) {
+        document.getElementById("d" + i).classList.remove("show");
+      }
+    }
+
+    function showDice(number) {
+      clearDice();
+
+      const patterns = {
+        1: [5],
+        2: [1, 9],
+        3: [1, 5, 9],
+        4: [1, 3, 7, 9],
+        5: [1, 3, 5, 7, 9],
+        6: [1, 3, 4, 6, 7, 9]
+      };
+
+      patterns[number].forEach(id => {
+        document.getElementById("d" + id).classList.add("show");
+      });
+    }
+
+    function rollDice() {
+      const dice = document.getElementById("dice");
+      const result = document.getElementById("diceResult");
+
+      result.innerText = "骰子滚动中...";
+      dice.classList.add("rolling");
+
+      let tempTimer = setInterval(() => {
+        const temp = Math.floor(Math.random() * 6) + 1;
+        showDice(temp);
+      }, 100);
+
+      setTimeout(() => {
+        clearInterval(tempTimer);
+        dice.classList.remove("rolling");
+
+        const number = Math.floor(Math.random() * 6) + 1;
+        showDice(number);
+
+        const size = number <= 3 ? "小" : "大";
+        const shouldDo =
+          (diceRule === "small" && size === "小") ||
+          (diceRule === "big" && size === "大");
+
+        result.innerText = `骰子是 ${number}，${size}，所以：${shouldDo ? "做" : "不做"}`;
+      }, 1200);
+    }
+
+    function getOptions() {
+      const text = document.getElementById("options").value;
+
+      return text
+        .split("\n")
+        .map(item => item.trim())
+        .filter(item => item.length > 0);
+    }
+
+    function updateOptionList(options) {
+      const list = document.getElementById("optionList");
+
+      if (options.length === 0) {
+        list.innerText = "";
+        return;
+      }
+
+      list.innerText = "当前选项：" + options.join(" / ");
+    }
+
+    function drawWheel(options) {
+      const canvas = document.getElementById("wheelCanvas");
+      const ctx = canvas.getContext("2d");
+
+      const size = canvas.width;
+      const center = size / 2;
+      const radius = size / 2 - 12;
+
+      ctx.clearRect(0, 0, size, size);
+
+      if (options.length === 0) {
+        ctx.beginPath();
+        ctx.arc(center, center, radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#f6f1ea";
+        ctx.fill();
+
+        ctx.fillStyle = "#50625e";
+        ctx.font = "bold 42px Microsoft YaHei, Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("输入选项", center, center);
+        return;
+      }
+
+      const sliceAngle = (Math.PI * 2) / options.length;
+
+      options.forEach((option, index) => {
+        const startAngle = index * sliceAngle - Math.PI / 2;
+        const endAngle = startAngle + sliceAngle;
+        const middleAngle = startAngle + sliceAngle / 2;
+
+        // 扇区
+        ctx.beginPath();
+        ctx.moveTo(center, center);
+        ctx.arc(center, center, radius, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fillStyle = colors[index % colors.length];
+        ctx.fill();
+
+        // 分割线
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // 文字
+        ctx.save();
+        ctx.translate(center, center);
+        ctx.rotate(middleAngle);
+
+        ctx.fillStyle = "#333";
+        ctx.font = "bold 28px Microsoft YaHei, Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        const maxTextLength = 8;
+        let text = option;
+        if (text.length > maxTextLength) {
+          text = text.slice(0, maxTextLength) + "…";
+        }
+
+        ctx.fillText(text, radius * 0.62, 0);
+        ctx.restore();
+      });
+
+      // 中心圆
+      ctx.beginPath();
+      ctx.arc(center, center, 76, 0, Math.PI * 2);
+      ctx.fillStyle = "white";
+      ctx.fill();
+      ctx.strokeStyle = "#50625e";
+      ctx.lineWidth = 6;
+      ctx.stroke();
+
+      ctx.fillStyle = "#50625e";
+      ctx.font = "bold 34px Microsoft YaHei, Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("转", center, center);
+    }
+
+    function prepareWheel() {
+      const options = getOptions();
+      currentOptions = options;
+      updateOptionList(options);
+
+      const canvas = document.getElementById("wheelCanvas");
+      canvas.style.transition = "none";
+      canvas.style.transform = "rotate(0deg)";
+      currentRotation = 0;
+
+      drawWheel(options);
+
+      setTimeout(() => {
+        canvas.style.transition = "transform 4s cubic-bezier(.12,.73,.18,1)";
+      }, 50);
+    }
+
+    function spinWheel() {
+      const options = getOptions();
+      currentOptions = options;
+
+      const result = document.getElementById("wheelResult");
+      const canvas = document.getElementById("wheelCanvas");
+
+      updateOptionList(options);
+      drawWheel(options);
+
+      if (options.length === 0) {
+        result.innerText = "请先输入选项";
+        return;
+      }
+
+      const selectedIndex = Math.floor(Math.random() * options.length);
+      const selected = options[selectedIndex];
+
+      result.innerText = "转盘旋转中...";
+
+      const sliceAngle = 360 / options.length;
+
+      /*
+        画转盘时，第 0 个选项从顶部开始。
+        指针固定在顶部。
+        这里让 selectedIndex 对应的扇区中心最后停到顶部。
+      */
+      const targetAngle = 360 - (selectedIndex * sliceAngle + sliceAngle / 2);
+      const randomOffset = (Math.random() - 0.5) * sliceAngle * 0.5;
+
+      const extraRounds = 6 * 360;
+      currentRotation += extraRounds + targetAngle + randomOffset;
+
+      canvas.style.transform = `rotate(${currentRotation}deg)`;
+
+      setTimeout(() => {
+        result.innerText = `选它：${selected}`;
+      }, 4100);
+    }
+
+    showDice(1);
+    prepareWheel();
+  </script>
+</body>
+</html>
